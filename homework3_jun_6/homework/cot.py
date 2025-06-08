@@ -2,13 +2,59 @@ from .base_llm import BaseLLM
 
 
 class CoTModel(BaseLLM):
+    def __init__(self):
+        super().__init__()
+    
     def format_prompt(self, question: str) -> str:
         """
         Take a question and convert it into a chat template. The LLM will likely answer much
         better if you provide a chat template. self.tokenizer.apply_chat_template can help here
         """
 
-        raise NotImplementedError()
+        messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a helpful and concise assistant that performs unit conversions. "
+                "Always show the correct conversion factor, multiply, and wrap the final result in <answer>...</answer>. "
+                "Only return a number inside the answer tag. Do not include explanations after the answer."
+            ),
+        },
+        {
+            "role": "user",
+            "content": "Convert 10 inches to centimeters.",
+        },
+        {
+            "role": "assistant",
+            "content": (
+                "1 inch = 2.54 cm.\n"
+                "10 inches * 2.54 = 25.4 cm.\n"
+                "<answer>25.4</answer>"
+            ),
+        },
+        {
+            "role": "user",
+            "content": "Convert 5 kilometers to miles.",
+        },
+        {
+            "role": "assistant",
+            "content": (
+                "1 kilometer = 0.621371 miles.\n"
+                "5 kilometers * 0.621371 = 3.106855 miles.\n"
+                "<answer>3.106855</answer>"
+            ),
+        },
+        {
+            "role": "user",
+            "content": question.strip(),
+        },
+    ]
+
+        return self.tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,  # ensures output ends where assistant should start answering
+        )
 
 
 def load() -> CoTModel:
