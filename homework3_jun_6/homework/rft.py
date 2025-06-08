@@ -1,5 +1,7 @@
+# homework/rft.py
 from .base_llm import BaseLLM
-from .sft import test_model
+# Import train_model and test_model directly from sft.py for reuse
+from .sft import train_model as sft_train_model, test_model as sft_test_model 
 
 
 def load() -> BaseLLM:
@@ -7,7 +9,7 @@ def load() -> BaseLLM:
 
     from peft import PeftModel
 
-    model_name = "rft_model"
+    model_name = "rft_model" # This is the expected output directory for RFT model
     model_path = Path(__file__).parent / model_name
 
     llm = BaseLLM()
@@ -18,14 +20,27 @@ def load() -> BaseLLM:
 
 
 def train_model(
-    output_dir: str,
+    output_dir: str = "homework/rft_model", # Default output directory for RFT model
+    r_lora: int = 16, # Increased rank for RFT as suggested in prompt
+    lora_alpha: int = 64, # Increased alpha
+    num_train_epochs: int = 5, # Standard epochs
     **kwargs,
 ):
-    # Reuse much of the SFT code here
-    raise NotImplementedError()
+    # Reuse the train_model logic from sft.py, but force use_rft_data=True
+    # and provide RFT-specific default parameters for LoRA and output directory.
+    sft_train_model(
+        output_dir=output_dir,
+        use_rft_data=True, # Crucially set to True for RFT
+        r_lora=r_lora,
+        lora_alpha=lora_alpha,
+        num_train_epochs=num_train_epochs,
+        **kwargs,
+    )
 
 
 if __name__ == "__main__":
     from fire import Fire
 
-    Fire({"train": train_model, "test": test_model, "load": load})
+    # Use the test_model from sft.py directly, as it handles loading and benchmarking
+    # The 'load' command will be for the rft_model specifically
+    Fire({"train": train_model, "test": sft_test_model, "load": load})

@@ -1,17 +1,21 @@
+# homework/sft.py (Modified)
 from .base_llm import BaseLLM
 from .data import Dataset, benchmark
 import torch
 from transformers import TrainingArguments, Trainer
 from peft import get_peft_model, LoraConfig, TaskType
 from pathlib import Path
+import json # Added import for json
 
+# Make sure this is the path where your RFT data will be saved
+RFT_DATASET_PATH = "data/rft.json" 
 
 def load() -> BaseLLM:
     from pathlib import Path
 
     from peft import PeftModel
 
-    model_name = "sft_model"
+    model_name = "sft_model" # Or "rft_model" if you want to explicitly name the RFT trained model
     model_path = Path(__file__).parent / model_name
 
     llm = BaseLLM()
@@ -29,6 +33,7 @@ def tokenize(tokenizer, question: str, answer: str):
     `labels[i] == -100` for the question or masked out parts, since we only want to supervise
     the answer.
     """
+    # For RFT, the 'answer' here is the full CoT reasoning + <answer> tag
     full_text = f"{question} {answer}{tokenizer.eos_token}"
 
     tokenizer.padding_side = "right"
@@ -37,6 +42,8 @@ def tokenize(tokenizer, question: str, answer: str):
 
     input_ids = full["input_ids"]
     # Tokenize the question separately to get its length
+    # It's crucial here that `question` is *just* the question, not the CoT prompt from CoTModel.
+    # The `format_example` for RFT will handle this.
     question_len = len(tokenizer(question)["input_ids"])
 
     # Create labels: mask out the prompt part
@@ -53,15 +60,26 @@ def tokenize(tokenizer, question: str, answer: str):
 
 def format_example(prompt: str, answer: float) -> dict[str, str]:
     """
-    Construct a question / answer pair. Consider rounding the answer to make it easier for the LLM.
+    Construct a question / answer pair for the original SFT task.
+    This function will be reused for RFT, but the 'answer' for RFT will be the full
+    Chain-of-Thought string, not just the float.
     """
-    # Round the answer to a reasonable number of decimal places for consistency and LLM performance
-    # For unit conversions, 3-5 decimal places are usually sufficient
+    # This format_example is for the *original* SFT (question -> <answer>float</answer>)
+    # For RFT, the answer will already be a string containing the CoT and <answer> tag.
+    # We will need a specific format_fn for the RFT dataset.
     rounded_answer = f"<answer>{answer:.5f}</answer>"
     return {"question": prompt, "answer": rounded_answer}
 
 
-class TokenizedDataset(torch.utils.data.Dataset): # Inherit from torch.utils.data.Dataset
+def format_rft_example(question: str, true_answer: float, full_cot_text: str) -> dict[str, str]:
+    """
+    Construct a question / CoT answer pair for RFT.
+    The 'answer' in this case is the full chain of thought string.
+    """
+    return {"question": question, "answer": full_cot_text}
+
+
+class TokenizedDataset(torch.utils.data.Dataset):
     def __init__(self, tokenizer, data: Dataset, format_fn):
         """
         Use the
@@ -74,10 +92,18 @@ class TokenizedDataset(torch.utils.data.Dataset): # Inherit from torch.utils.dat
         self.format_fn = format_fn
         self.tokenizer = tokenizer
         self.data = data
-        # Pre-tokenize all data during initialization for efficiency
         self.tokenized_data = []
-        for question, answer in self.data:
-            formatted_data = self.format_fn(question, answer)
+
+        # Assuming data is either Dataset("train") (tuples of (question, answer_float))
+        # or the RFT JSON data (tuples of (question, true_answer_float, full_cot_text))
+        for item in self.data:
+            if len(item) == 2: # Original SFT format (question, answer_float)
+                formatted_data = self.format_fn(item[0], item[1])
+            elif len(item) == 3: # RFT format (question, true_answer_float, full_cot_text)
+                formatted_data = self.format_fn(item[0], item[1], item[2]) # Pass all args to format_rft_example
+            else:
+                raise ValueError(f"Unexpected data format: {item}")
+            
             self.tokenized_data.append(tokenize(self.tokenizer, **formatted_data))
 
 
@@ -90,56 +116,67 @@ class TokenizedDataset(torch.utils.data.Dataset): # Inherit from torch.utils.dat
 
 def train_model(
     output_dir: str = "homework/sft_model", # Default output directory
+    use_rft_data: bool = False, # New argument to switch between SFT and RFT data
+    r_lora: int = 8, # LoRA rank, made configurable
+    lora_alpha: int = 32, # LoRA alpha, made configurable
+    num_train_epochs: int = 5, # Made configurable
     **kwargs,
 ):
     llm = BaseLLM()
 
-    # Configure LoRA
-    # You might need to adjust r and lora_alpha based on model size constraints.
-    # A common rule of thumb is lora_alpha = 2 * r or 4 * r.
-    # For a 360M model, a rank of 8-16 might be reasonable to keep adapter size small.
-    # Let's try r=8, lora_alpha=32
+    # Configure LoRA with configurable rank and alpha
     peft_config = LoraConfig(
         task_type=TaskType.CAUSAL_LM,
         inference_mode=False,
-        r=8,
-        lora_alpha=32, # Typically lora_alpha is a multiple of r
+        r=r_lora,
+        lora_alpha=lora_alpha,
         lora_dropout=0.1,
         target_modules="all-linear",
         bias="none",
     )
 
     llm.model = get_peft_model(llm.model, peft_config)
-    llm.model.print_trainable_parameters() # This will show the number of trainable LoRA parameters
+    llm.model.print_trainable_parameters()
 
     if torch.cuda.is_available() and getattr(llm.model, "enable_input_require_grads", None):
         llm.model.enable_input_require_grads()
     
-    # Override the format_prompt in BaseLLM for SFT
-    # In SFT, we don't use chat templates but directly ask for completion.
+    # Override the format_prompt in BaseLLM for training purposes
     original_format_prompt = llm.format_prompt
-    llm.format_prompt = lambda q: q # Simply return the question as is for SFT input
+    llm.format_prompt = lambda q: q # Simply return the question as is for training input
 
-    train_dataset = TokenizedDataset(llm.tokenizer, Dataset("train"), format_example)
-    eval_dataset = TokenizedDataset(llm.tokenizer, Dataset("valid"), format_example) # Use valid set for evaluation
+    # Determine which dataset to use based on use_rft_data
+    if use_rft_data:
+        print(f"Training with RFT dataset from {RFT_DATASET_PATH}")
+        with open(RFT_DATASET_PATH, 'r') as f:
+            rft_raw_data = json.load(f)
+        train_dataset = TokenizedDataset(llm.tokenizer, rft_raw_data, format_rft_example)
+        # For RFT, validation should still be on original data if we want to check numeric accuracy
+        # Or you can create a RFT-style valid dataset too if you want to check CoT generation quality.
+        # For this homework, let's keep original valid set for benchmarking.
+        eval_dataset = TokenizedDataset(llm.tokenizer, Dataset("valid"), format_example)
+    else:
+        print("Training with standard SFT dataset")
+        train_dataset = TokenizedDataset(llm.tokenizer, Dataset("train"), format_example)
+        eval_dataset = TokenizedDataset(llm.tokenizer, Dataset("valid"), format_example)
 
     training_args = TrainingArguments(
         output_dir=output_dir,
-        learning_rate=3e-4, # A common learning rate for LoRA
-        num_train_epochs=1,
+        learning_rate=3e-4,
+        num_train_epochs=num_train_epochs,
         per_device_train_batch_size=32,
         per_device_eval_batch_size=32,
-        gradient_accumulation_steps=1, # Adjust if you have smaller GPU memory
-        gradient_checkpointing=True, # Saves GPU memory
+        gradient_accumulation_steps=1,
+        gradient_checkpointing=True,
         logging_dir=output_dir,
         logging_steps=100,
-        eval_strategy="epoch", # Evaluate at the end of each epoch
-        save_strategy="epoch",       # Save checkpoint at the end of each epoch
+        eval_strategy="epoch",
+        save_strategy="epoch",
         report_to="tensorboard",
-        save_total_limit=1, # Only keep the last checkpoint
+        save_total_limit=1,
         push_to_hub=False,
-        remove_unused_columns=False, # Important for custom datasets
-        load_best_model_at_end=True, # Load the best model based on eval_loss
+        remove_unused_columns=False,
+        load_best_model_at_end=True,
     )
 
     trainer = Trainer(
@@ -151,13 +188,13 @@ def train_model(
 
     trainer.train()
 
-    # Save the final LoRA adapter
     trainer.save_model(output_dir)
     print(f"LoRA model saved to {output_dir}")
 
-    # Restore original format_prompt for potential subsequent calls if needed
-    llm.format_prompt = original_format_prompt
+    llm.format_prompt = original_format_prompt # Restore original
     
+    # For RFT, it's important to benchmark with the correct format_prompt (which is just the question)
+    # The `test_model` function already handles this by setting llm.format_prompt = lambda q: q
     test_model(output_dir)
 
 
@@ -165,14 +202,14 @@ def test_model(ckpt_path: str):
     testset = Dataset("valid")
     llm = BaseLLM()
 
-    # Load the model with LoRA adapters
     from peft import PeftModel
 
     print(f"Loading LoRA model from {ckpt_path}")
     llm.model = PeftModel.from_pretrained(llm.model, ckpt_path).to(llm.device)
-    llm.model.eval() # Set model to evaluation mode
+    llm.model.eval()
 
-    # Override the format_prompt for evaluation (same as during SFT training)
+    # For testing, we just provide the question and expect the model to generate CoT then answer
+    # So the format_prompt should just be the question itself for a directly fine-tuned RFT model.
     llm.format_prompt = lambda q: q
 
     benchmark_result = benchmark(llm, testset, 100)
