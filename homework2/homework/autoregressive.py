@@ -64,7 +64,8 @@ class AutoregressiveModel(torch.nn.Module, Autoregressive):
         self.n_tokens = n_tokens
         
         # 1. Token Embedding: Maps each integer token to a d_latent dimensional vector
-        self.token_embedding = nn.Embedding(n_tokens + 1, d_latent) # +1 for the start token
+        # We now map n_tokens + 1 for an implicit "start" token, but no explicit parameter.
+        self.token_embedding = nn.Embedding(n_tokens + 1, d_latent) 
         
         # 2. Positional Embedding: Adds positional information to the token embeddings
         self.pos_embedding = nn.Parameter(torch.randn(1, max_seq_len, d_latent))
@@ -77,8 +78,7 @@ class AutoregressiveModel(torch.nn.Module, Autoregressive):
         # 4. Output Layer: Projects the transformer output back to the token vocabulary size
         self.output_head = nn.Linear(d_latent, n_tokens)
         
-        # 5. A learnable "start-of-sequence" token embedding
-        self.start_token = nn.Parameter(torch.randn(1, 1, d_latent))
+        # Removed: self.start_token = nn.Parameter(torch.randn(1, 1, d_latent))
 
     def _generate_causal_mask(self, size: int, device: torch.device) -> torch.Tensor:
         """
@@ -101,16 +101,17 @@ class AutoregressiveModel(torch.nn.Module, Autoregressive):
 
         # --- Auto-regressive shifting ---
         # 1. Embed the integer tokens into vectors
+        # Use token 0 for the "start" position, as it's typically a special padding/start ID
+        # or the first actual token of the sequence.
+        # We rely on the shifting to model the auto-regressive property.
         embedded_tokens = self.token_embedding(x_flat)
         
-        # 2. Prepend the learnable start token embedding to the sequence
-        # We expand `start_token` to match the batch size B
-        start_tokens = self.start_token.expand(B, -1, -1)
-        
-        # 3. Concatenate start token and shift sequence to the right
-        # The model will see the start token at pos 0, token 0 at pos 1, etc.
-        # We remove the last token's embedding to keep the sequence length constant.
-        input_sequence = torch.cat([start_tokens, embedded_tokens[:, :-1, :]], dim=1)
+        # 2. Shift the sequence to the right by prepending a zero vector for the first position
+        # and removing the last token's embedding.
+        # This makes the prediction for position `i` depend only on tokens up to `i-1`.
+        # The model's first prediction (for the first pixel) will be based on the zero vector
+        # and the positional embedding for position 0.
+        input_sequence = torch.cat([torch.zeros(B, 1, self.d_latent, device=device), embedded_tokens[:, :-1, :]], dim=1)
 
         # Add positional embeddings
         # Ensure positional embedding matches the sequence length
@@ -141,25 +142,36 @@ class AutoregressiveModel(torch.nn.Module, Autoregressive):
             device = next(self.parameters()).device
             
         seq_len = h * w
-        # Start with an empty tensor for the output images, filled with zeros (or any placeholder)
+        # Start with an empty tensor for the output images, filled with zeros
+        # We initialize with a value (e.g., 0) that will be embedded and shifted
         generated_tokens = torch.zeros((B, seq_len), dtype=torch.long, device=device)
 
-
-        temperature = 1.5
+        temperature = 1.5 # Ensure temperature is used for sampling
+        
         # Iteratively generate one token at a time
         for i in range(seq_len):
             # Pass the currently generated sequence through the model
             # We reshape to (B, h, w) as expected by the forward pass
             current_sequence_img = generated_tokens.view(B, h, w)
+            
+            # The forward pass will automatically handle the shifting:
+            # - For i=0, it will use the zero-vector placeholder + positional embedding for pos 0.
+            # - For i>0, it will use the previously generated tokens up to i-1.
             logits, _ = self.forward(current_sequence_img)
             
-            # Get the logits for the very next token we want to predict
+            # Get the logits for the very next token we want to predict (position i)
             # Logits shape: (B, h, w, n_tokens) -> flatten to (B, seq_len, n_tokens)
             logits_flat = logits.view(B, seq_len, self.n_tokens)
             next_token_logits = logits_flat[:, i, :] # Get logits for the i-th position
             
-            # Apply softmax to get probabilities and sample, or just take the argmax for greedy decoding
-            next_token = torch.argmax(next_token_logits, dim=-1)
+            # Apply temperature and sample stochastically
+            if temperature == 0:
+                # Greedy decoding (deterministic)
+                next_token = torch.argmax(next_token_logits, dim=-1)
+            else:
+                # Sample probabilistically (stochastic)
+                probabilities = F.softmax(next_token_logits / temperature, dim=-1)
+                next_token = torch.multinomial(probabilities, num_samples=1).squeeze(1)
             
             # Place the predicted token into our sequence
             generated_tokens[:, i] = next_token
