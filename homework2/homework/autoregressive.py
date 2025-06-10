@@ -144,6 +144,8 @@ class AutoregressiveModel(torch.nn.Module, Autoregressive):
         # Start with an empty tensor for the output images, filled with zeros (or any placeholder)
         generated_tokens = torch.zeros((B, seq_len), dtype=torch.long, device=device)
 
+
+        temperature = 1.5
         # Iteratively generate one token at a time
         for i in range(seq_len):
             # Pass the currently generated sequence through the model
