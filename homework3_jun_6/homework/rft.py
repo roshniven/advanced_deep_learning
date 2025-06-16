@@ -16,8 +16,9 @@ def load() -> BaseLLM:
 
 def train_model(
     output_dir: str = "homework/rft_model",
-    r_lora: int = 16,
-    lora_alpha: int = 64,
+
+    r_lora: int = 32,
+    lora_alpha: int = 128,
     num_train_epochs: int = 5,
     **kwargs,
 ):

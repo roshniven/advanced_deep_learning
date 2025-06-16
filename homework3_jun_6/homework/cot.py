@@ -53,7 +53,7 @@ class CoTModel(BaseLLM):
         return self.tokenizer.apply_chat_template(
             messages,
             tokenize=False,
-            add_generation_prompt=True,  # ensures output ends where assistant should start answering
+            add_generation_prompt=True,
         )
 
 
