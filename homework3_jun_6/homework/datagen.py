@@ -17,7 +17,7 @@ def generate_dataset(
     for each question, then selecting the one with the correct answer.
     """
     cot_model = CoTModel()
-    instruct_model_checkpoint = "HuggingFaceTB/SmolLM2-360M-Instruct"
+    instruct_model_checkpoint = "HuggingFaceTB/SmolLM2-1.7B-Instruct"
     cot_model.tokenizer = AutoTokenizer.from_pretrained(instruct_model_checkpoint)
     cot_model.model = AutoModelForCausalLM.from_pretrained(instruct_model_checkpoint).to(cot_model.device)
 
@@ -33,7 +33,7 @@ def generate_dataset(
             [prompt],
             num_return_sequences=num_samples_per_question,
             temperature=temperature
-        )
+        ) [0]
 
         if not generations:
             continue
@@ -44,7 +44,7 @@ def generate_dataset(
         for generated_text in generations[0]:
             parsed_answer = cot_model.parse_answer(generated_text)
 
-            if not np.isnan(parsed_answer) and abs(parsed_answer - true_answer) < 1e-4:
+            if not np.isnan(parsed_answer) and abs(parsed_answer - true_answer) < 1e-1:
                 current_error = abs(parsed_answer - true_answer)
                 
                 if current_error < min_error:
