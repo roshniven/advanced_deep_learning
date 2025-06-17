@@ -17,12 +17,12 @@ class CoTModel(BaseLLM):
             "content": (
                 "You are a helpful and concise assistant that performs unit conversions. "
                 "Always show the correct conversion factor, multiply, and wrap the final result in <answer>...</answer>. "
-                "Only return a number inside the answer tag. Do not include explanations after the answer."
+                "Include a line of reasoning before the answer. Only return a number inside the answer tag."
             ),
         },
         {
             "role": "user",
-            "content": "Convert 10 inches to centimeters.",
+            "content": "How much is 10 inches in centimeters?",
         },
         {
             "role": "assistant",

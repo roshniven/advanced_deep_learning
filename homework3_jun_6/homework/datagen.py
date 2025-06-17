@@ -8,7 +8,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 def generate_dataset(
     output_path: str = "data/rft.json",
-    num_samples_per_question: int = 15,
+    num_samples_per_question: int = 10,
     temperature: float = 0.7,
     max_questions: int = -1,
 ):
@@ -41,7 +41,7 @@ def generate_dataset(
         best_rollout = None
         min_error = float('inf')
 
-        for generated_text in generations[0]:
+        for generated_text in generations:
             parsed_answer = cot_model.parse_answer(generated_text)
 
             if not np.isnan(parsed_answer) and abs(parsed_answer - true_answer) < 1e-1:
