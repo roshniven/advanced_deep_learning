@@ -15,7 +15,7 @@ class CoTModel(BaseLLM):
         {
             "role": "system",
             "content": (
-                "You are a helpful and concise assistant that performs math calculations. "
+                "You are an expert math problem solver who approaches each problem with logical reasoning and gives a precise, concise solution. "
                 "Wrap the final result in <answer>...</answer>. "
             ),
         },

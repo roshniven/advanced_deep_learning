@@ -45,13 +45,12 @@ def generate_dataset(
             parsed_answer = cot_model.parse_answer(generated_text)
             current_error = abs(parsed_answer - true_answer)/abs(true_answer)
 
-            if not np.isnan(parsed_answer) and current_error < 1e-1:                
+            if not np.isnan(parsed_answer):                
                 if current_error < min_error:
                     min_error = current_error
                     best_rollout = generated_text
 
-        # After checking all generations, if we found a valid answer, add the best one found.
-        if best_rollout is not None:
+        if best_rollout is not None and min_error < 0.1:
             rft_data.append([question, true_answer, best_rollout.strip()])
 
     output_file = Path(output_path)
