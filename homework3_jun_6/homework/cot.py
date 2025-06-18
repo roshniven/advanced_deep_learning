@@ -15,9 +15,9 @@ class CoTModel(BaseLLM):
         {
             "role": "system",
             "content": (
-                "You are a helpful and concise assistant that performs unit conversions. "
-                "Always show the correct conversion factor, multiply, and wrap the final result in <answer>...</answer>. "
-                "Include a line of reasoning before the answer. Only return a number inside the answer tag."
+                "You are a helpful and concise assistant that performs math calculations. "
+                "Wrap the final result in <answer>...</answer>. "
+                #"Include a line of reasoning before the answer. Only return a number inside the answer tag."
             ),
         },
         {

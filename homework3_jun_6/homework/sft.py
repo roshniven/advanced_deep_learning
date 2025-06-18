@@ -113,7 +113,7 @@ def train_model(
         inference_mode=False,
         r=r_lora,
         lora_alpha=lora_alpha,
-        lora_dropout=0.1,
+        lora_dropout=0,
         target_modules="all-linear",
         bias="none",
     )

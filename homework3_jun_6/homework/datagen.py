@@ -43,10 +43,9 @@ def generate_dataset(
 
         for generated_text in generations:
             parsed_answer = cot_model.parse_answer(generated_text)
+            current_error = abs(parsed_answer - true_answer)/abs(true_answer)
 
-            if not np.isnan(parsed_answer) and abs(parsed_answer - true_answer) < 1e-1:
-                current_error = abs(parsed_answer - true_answer)
-                
+            if not np.isnan(parsed_answer) and current_error < 1e-1:                
                 if current_error < min_error:
                     min_error = current_error
                     best_rollout = generated_text
