@@ -15,7 +15,7 @@ class CoTModel(BaseLLM):
         {
             "role": "system",
             "content": (
-                "You are a math problem solver expert. You apply logical reasoning to a problem and solve it using a clear, step-by-step approach."
+                "You are a math problem solver expert. You apply logical reasoning to a problem and provide a concise answer."
                 "Wrap the final result in <answer>...</answer>. Be concise, precise, and accurate."
             ),
         },
