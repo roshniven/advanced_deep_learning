@@ -15,32 +15,20 @@ class CoTModel(BaseLLM):
         {
             "role": "system",
             "content": (
-                "You are an expert math problem solver who approaches each problem with logical reasoning and gives a precise, concise solution. "
-                "Wrap the final result in <answer>...</answer>. "
+                "You are an expert math problem solver. You approach each problem with logical reasoning and solve it using a clear, step-by-step approach."
+                "Wrap the final result in <answer>...</answer>. Be concise, precise, and accurate."
             ),
         },
         {
             "role": "user",
-            "content": "How much is 10 inches in centimeters?",
+            "content": "Convert 7 mph to m/s?",
         },
         {
             "role": "assistant",
             "content": (
-                "1 inch = 2.54 cm.\n"
-                "10 inches * 2.54 = 25.4 cm.\n"
-                "<answer>25.4</answer>"
-            ),
-        },
-        {
-            "role": "user",
-            "content": "Convert 5 kilometers to miles.",
-        },
-        {
-            "role": "assistant",
-            "content": (
-                "1 kilometer = 0.621371 miles.\n"
-                "5 kilometers * 0.621371 = 3.106855 miles.\n"
-                "<answer>3.106855</answer>"
+                "1 mph = 0.44704 m/s."
+                "7 mph * 0.44704 = 3.12928 m/s.\n"
+                "<answer>3.12928</answer>"
             ),
         },
         {
