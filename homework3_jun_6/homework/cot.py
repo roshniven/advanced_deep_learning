@@ -15,13 +15,13 @@ class CoTModel(BaseLLM):
         {
             "role": "system",
             "content": (
-                "You are a math problem solver expert. You apply logical reasoning to a problem and provide a concise answer."
+                "You are a math problem solver specialist. You apply logical reasoning to a problem and solve it using a clear, step-by-step approach."
                 "Wrap the final result in <answer>...</answer>. Be concise, precise, and accurate."
             ),
         },
         {
             "role": "user",
-            "content": "What is the conversion from mph to m/s for 7mph?",
+            "content": "What is the conversion from mph to m/s for 7 mph?",
         },
         {
             "role": "assistant",
